@@ -278,20 +278,31 @@ int ObIKFTParser::init_dict(const plugin::ObFTParserParam &param)
   }
 
   ObFTRangeDict *dict = nullptr;
-  ObFTDictDesc main_dict_desc("main_dict",
+  const bool use_user_main = !param.ik_param_.main_dict_.empty()
+      && 0 != param.ik_param_.main_dict_.case_compare(ObFTSLiteral::FT_DEFAULT_IK_DICT_UTF8_TABLE);
+  const bool use_user_quan = !param.ik_param_.quan_dict_.empty()
+      && 0 != param.ik_param_.quan_dict_.case_compare(
+          ObFTSLiteral::FT_DEFAULT_IK_QUANTIFIER_UTF8_TABLE);
+  const bool use_user_stop = !param.ik_param_.stopword_dict_.empty()
+      && 0 != param.ik_param_.stopword_dict_.case_compare(
+          ObFTSLiteral::FT_DEFAULT_IK_STOPWORD_UTF8_TABLE);
+
+  ObFTDictDesc main_dict_desc(use_user_main ? param.ik_param_.main_dict_ : ObString("main_dict"),
                               ObFTDictType::DICT_IK_MAIN,
                               ObCharsetType::CHARSET_UTF8MB4,
-                              ObCollationType::CS_TYPE_UTF8MB4_BIN);
-
-  ObFTDictDesc quan_dict_desc("quan_dict",
+                              ObCollationType::CS_TYPE_UTF8MB4_BIN,
+                              use_user_main);
+  ObFTDictDesc quan_dict_desc(use_user_quan ? param.ik_param_.quan_dict_ : ObString("quan_dict"),
                               ObFTDictType::DICT_IK_QUAN,
                               ObCharsetType::CHARSET_UTF8MB4,
-                              ObCollationType::CS_TYPE_UTF8MB4_BIN);
-
-  ObFTDictDesc stopword_dict_desc("stopword",
-                                  ObFTDictType::DICT_IK_STOP,
-                                  ObCharsetType::CHARSET_UTF8MB4,
-                                  ObCollationType::CS_TYPE_UTF8MB4_BIN);
+                              ObCollationType::CS_TYPE_UTF8MB4_BIN,
+                              use_user_quan);
+  ObFTDictDesc stopword_dict_desc(
+      use_user_stop ? param.ik_param_.stopword_dict_ : ObString("stopword"),
+      ObFTDictType::DICT_IK_STOP,
+      ObCharsetType::CHARSET_UTF8MB4,
+      ObCollationType::CS_TYPE_UTF8MB4_BIN,
+      use_user_stop);
 
   if (should_read_newest_table()) {
     // clear dict cache, always false now

@@ -168,6 +168,23 @@ public:
 private:
   obcall::ObAdminRefreshMemStatArg rpc_arg_;
 };
+class ObRefreshFulltextDictStmt : public ObSystemCmdStmt
+{
+public:
+  static constexpr int64_t MAX_DICT_TABLE_NAME_LENGTH
+      = common::OB_MAX_DATABASE_NAME_LENGTH + common::OB_MAX_TABLE_NAME_LENGTH + 2;
+  typedef common::ObFixedLengthString<MAX_DICT_TABLE_NAME_LENGTH> DictTableName;
+
+  ObRefreshFulltextDictStmt() : ObSystemCmdStmt(stmt::T_REFRESH_FULLTEXT_DICT) {}
+  virtual ~ObRefreshFulltextDictStmt() {}
+
+  int set_dict_table(const common::ObString &table_name) { return dict_table_.assign(table_name); }
+  common::ObString get_dict_table() const { return dict_table_.str(); }
+
+  TO_STRING_KV(N_STMT_TYPE, ((int)stmt_type_), K_(dict_table));
+private:
+  DictTableName dict_table_;
+};
 
 class ObWashMemFragmentationStmt : public ObSystemCmdStmt
 {

@@ -17,6 +17,7 @@
 #ifndef _OCEANBASE_STORAGE_FTS_DICT_OB_FT_DICT_DEF_H_
 #define _OCEANBASE_STORAGE_FTS_DICT_OB_FT_DICT_DEF_H_
 
+#include "lib/hash_func/murmur_hash.h"
 #include "lib/charset/ob_charset.h"
 
 #include <cstdint>
@@ -63,9 +64,19 @@ public:
   ObFTDictDesc(const ObString &name,
                const ObFTDictType type,
                const ObCharsetType charset,
-               const ObCollationType coll_type)
-      : name_(name), type_(type), charset_(charset), coll_type_(coll_type)
+               const ObCollationType coll_type,
+               const bool is_user_dict = false)
+      : name_(name),
+        type_(type),
+        charset_(charset),
+        coll_type_(coll_type),
+        is_user_dict_(is_user_dict)
   {
+  }
+
+  uint64_t cache_id() const
+  {
+    return common::murmurhash(name_.ptr(), name_.length(), 0);
   }
 
 public:
@@ -73,6 +84,7 @@ public:
   ObFTDictType type_;
   ObCharsetType charset_;
   ObCollationType coll_type_;
+  bool is_user_dict_;
 };
 
 } //  namespace storage

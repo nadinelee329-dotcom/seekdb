@@ -1603,8 +1603,9 @@ int ObDDLResolver::resolve_table_option(const ParseNode *option_node, const bool
       }
       case T_PARSER_PROPERTIES: {
         if (OB_FAIL(ObFTParserResolverHelper::resolve_parser_properties(*option_node,
-                                                                               *allocator_,
-                                                                               parser_properties_))) {
+                                                                        *allocator_,
+                                                                        database_name_,
+                                                                        parser_properties_))) {
           LOG_WARN("fail to resolve parser properties", K(ret));
         }
         break;

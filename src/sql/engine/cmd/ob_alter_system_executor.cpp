@@ -30,6 +30,8 @@
 #include "pl/pl_cache/ob_pl_cache_mgr.h"
 #include "sql/plan_cache/ob_ps_cache.h"
 
+#include "storage/fts/ob_fts_plugin_helper.h"
+#include "storage/fts/dict/ob_ft_dict_hub.h"
 #include "rootserver/ob_tenant_event_def.h"
 #include "sql/engine/cmd/ob_redis_importer.h"
 #include "sql/engine/cmd/ob_timezone_importer.h"
@@ -471,6 +473,23 @@ int ObRefreshMemStatExecutor::execute(ObExecContext &ctx, ObRefreshMemStatStmt &
   } else if (OB_FAIL(GCTX.root_service_->admin_refresh_memory_stat(
                          stmt.get_rpc_arg()))) {
     LOG_WARN("refresh memory stat failed", K(ret), "rpc_arg", stmt.get_rpc_arg());
+  }
+  return ret;
+}
+int ObRefreshFulltextDictExecutor::execute(
+    ObExecContext &ctx, ObRefreshFulltextDictStmt &stmt)
+{
+  int ret = OB_SUCCESS;
+  storage::ObFTDictHub *dict_hub = nullptr;
+  UNUSED(ctx);
+  if (OB_FAIL(storage::ObFTParsePluginData::instance().get_dict_hub(dict_hub))) {
+    LOG_WARN("failed to get fulltext dictionary hub", K(ret));
+  } else if (OB_ISNULL(dict_hub)) {
+    ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("fulltext dictionary hub is null", K(ret));
+  } else if (OB_FAIL(dict_hub->refresh_cache(stmt.get_dict_table()))) {
+    LOG_WARN("failed to refresh fulltext dictionary cache",
+             K(ret), "dict_table", stmt.get_dict_table());
   }
   return ret;
 }

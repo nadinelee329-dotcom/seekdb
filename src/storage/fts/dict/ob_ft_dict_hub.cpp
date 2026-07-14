@@ -21,6 +21,7 @@
 #include "lib/ob_errno.h"
 #include "lib/oblog/ob_log_module.h"
 #include "lib/utility/ob_macro_utils.h"
+#include "storage/fts/dict/ob_ft_cache.h"
 #include "storage/fts/dict/ob_ft_cache_container.h"
 #include "storage/fts/dict/ob_ft_dict_def.h"
 #include "storage/fts/dict/ob_ft_range_dict.h"
@@ -51,7 +52,7 @@ int ObFTDictHub::destroy()
 int ObFTDictHub::build_cache(const ObFTDictDesc &desc, ObFTCacheRangeContainer &container)
 {
   int ret = OB_SUCCESS;
-  ObFTDictInfoKey key(static_cast<uint64_t>(desc.type_));
+  ObFTDictInfoKey key(desc.cache_id(), static_cast<uint64_t>(desc.type_));
   ObFTDictInfo info;
   container.reset();
 
@@ -78,7 +79,11 @@ int ObFTDictHub::build_cache(const ObFTDictDesc &desc, ObFTCacheRangeContainer &
 
     if (OB_FAIL(ret)) {
       if (OB_ENTRY_NOT_EXIST == ret) {
-        if (OB_FAIL(ObFTRangeDict::build_cache_from_ik_dict(desc, container))) {
+        if (desc.is_user_dict_
+            && OB_FAIL(ObFTRangeDict::build_cache(desc, container))) {
+          LOG_WARN("Failed to build user dictionary cache", K(ret), K(desc.name_));
+        } else if (!desc.is_user_dict_
+                   && OB_FAIL(ObFTRangeDict::build_cache_from_ik_dict(desc, container))) {
           LOG_WARN("Failed to build cache", K(ret));
         } else if (FALSE_IT(info.range_count_ = container.get_handles().size())) {
         } else if (OB_FAIL(put_dict_info(key, info))) {
@@ -95,7 +100,7 @@ int ObFTDictHub::load_cache(const ObFTDictDesc &desc, ObFTCacheRangeContainer &c
   int ret = OB_SUCCESS;
   ObFTDictInfo info;
   container.reset();
-  ObFTDictInfoKey key(static_cast<uint64_t>(desc.type_));
+  ObFTDictInfoKey key(desc.cache_id(), static_cast<uint64_t>(desc.type_));
   if (!is_inited_) {
     ret = OB_NOT_INIT;
     LOG_WARN("dict hub not init", K(ret));
@@ -124,6 +129,55 @@ int ObFTDictHub::load_cache(const ObFTDictDesc &desc, ObFTCacheRangeContainer &c
   return ret;
 }
 
+int ObFTDictHub::refresh_cache(const ObString &table_name)
+{
+  int ret = OB_SUCCESS;
+  if (!is_inited_) {
+    ret = OB_NOT_INIT;
+    LOG_WARN("dict hub not init", K(ret));
+  } else if (table_name.empty()) {
+    ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("dictionary table name is empty", K(ret));
+  } else {
+    const uint64_t name = common::murmurhash(table_name.ptr(), table_name.length(), 0);
+    const ObFTDictType dict_types[] = {
+        ObFTDictType::DICT_IK_MAIN,
+        ObFTDictType::DICT_IK_QUAN,
+        ObFTDictType::DICT_IK_STOP,
+    };
+    for (int64_t type_idx = 0; OB_SUCC(ret) && type_idx < ARRAYSIZEOF(dict_types); ++type_idx) {
+      const ObFTDictType type = dict_types[type_idx];
+      ObFTDictInfoKey key(name, static_cast<uint64_t>(type));
+      ObFTDictInfo info;
+      ObBucketHashWLockGuard guard(rw_dict_lock_, key.hash());
+      int tmp_ret = get_dict_info(key, info);
+      if (OB_HASH_NOT_EXIST == tmp_ret) {
+        // The dictionary has not been used yet; there is no cache to invalidate.
+      } else if (OB_SUCCESS != tmp_ret) {
+        ret = tmp_ret;
+        LOG_WARN("Failed to get dictionary info while refreshing", K(ret), K(table_name), K(type));
+      } else {
+        for (int32_t range_id = 0; OB_SUCC(ret) && range_id < info.range_count_; ++range_id) {
+          ObDictCacheKey cache_key(name, type, range_id);
+          if (OB_FAIL(ObDictCache::get_instance().erase(cache_key)) && OB_ENTRY_NOT_EXIST != ret) {
+            LOG_WARN("Failed to erase dictionary cache range",
+                     K(ret), K(table_name), K(type), K(range_id));
+          } else if (OB_ENTRY_NOT_EXIST == ret) {
+            ret = OB_SUCCESS;
+          }
+        }
+        if (OB_SUCC(ret)
+            && OB_FAIL(dict_map_.erase_refactored(key))
+            && OB_HASH_NOT_EXIST != ret) {
+          LOG_WARN("Failed to erase dictionary info", K(ret), K(table_name), K(type));
+        } else if (OB_HASH_NOT_EXIST == ret) {
+          ret = OB_SUCCESS;
+        }
+      }
+    }
+  }
+  return ret;
+}
 
 int ObFTDictHub::get_dict_info(const ObFTDictInfoKey &key, ObFTDictInfo &info)
 {

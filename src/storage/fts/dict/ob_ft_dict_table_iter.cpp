@@ -74,17 +74,36 @@ int ObFTDictTableIter::init(const ObString &table_name)
   if (IS_INIT) {
     ret = OB_INIT_TWICE;
     LOG_WARN("Inited twice.", K(ret));
+  } else if (OB_ISNULL(sql_proxy) || table_name.empty()) {
+    ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("Invalid dictionary table or SQL proxy", K(ret), K(table_name), KP(sql_proxy));
   } else {
+    ObString table_part = table_name;
+    ObString database_part = table_part.split_on('.');
+    if (table_part.empty()) {
+      table_part = database_part;
+      database_part.reset();
+    }
     SMART_VAR(ObSqlString, sql_string)
     {
-      if (OB_FAIL(sql_string.append("SELECT word FROM oceanbase."))) {
+      if (OB_NOT_NULL(table_part.find('.'))
+          || OB_NOT_NULL(table_part.find('`'))
+          || OB_NOT_NULL(database_part.find('`'))) {
+        ret = OB_INVALID_ARGUMENT;
+        LOG_WARN("Invalid dictionary table name", K(ret), K(table_name));
+      } else if (OB_FAIL(sql_string.append("SELECT LOWER(word) AS word FROM "))) {
         LOG_WARN("Failed to append sql", K(ret));
-      } else if (OB_FAIL(sql_string.append(table_name))) {
-        LOG_WARN("Failed to append sql", K(ret));
-      } else if (OB_FAIL(sql_string.append(" ORDER BY word"))) {
-        LOG_WARN("Failed to append sql", K(ret));
+      } else if (!database_part.empty()
+                 && OB_FAIL(sql_string.append_fmt("`%.*s`.",
+                                                  database_part.length(),
+                                                  database_part.ptr()))) {
+        LOG_WARN("Failed to append database name", K(ret), K(database_part));
+      } else if (OB_FAIL(sql_string.append_fmt("`%.*s` ORDER BY LOWER(word)",
+                                               table_part.length(),
+                                               table_part.ptr()))) {
+        LOG_WARN("Failed to append table name", K(ret), K(table_part));
       } else if (OB_FAIL(sql_proxy->read(res_, sql_string.ptr()))) {
-        LOG_WARN("Failed to execute sql", K(ret));
+        LOG_WARN("Failed to read custom dictionary table", K(ret), K(table_name));
       }
     }
 
@@ -98,6 +117,7 @@ int ObFTDictTableIter::init(const ObString &table_name)
         LOG_WARN("Failed to get next row", K(ret));
       } else {
         is_inited_ = true;
+        ret = OB_SUCCESS;
       }
     } else {
       is_inited_ = true;

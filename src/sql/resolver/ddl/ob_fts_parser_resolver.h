@@ -34,11 +34,18 @@ public:
   static int resolve_parser_properties(
       const ParseNode &parse_tree,
       common::ObIAllocator &allocator,
+      const common::ObString &database_name,
       common::ObString &parser_property);
 
 private:
   static int resolve_fts_index_parser_properties(const ParseNode *node,
+                                                 common::ObIAllocator &allocator,
+                                                 const common::ObString &database_name,
                                                  storage::ObFTParserJsonProps &property);
+  static int resolve_dict_table_name(const ParseNode &node,
+                                     common::ObIAllocator &allocator,
+                                     const common::ObString &database_name,
+                                     common::ObString &table_name);
 };
 
 } // end namespace sql

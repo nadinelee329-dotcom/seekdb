@@ -1145,6 +1145,60 @@ int ObRefreshMemStatResolver::resolve(const ParseNode &parse_tree)
   return ret;
 }
 
+int ObRefreshFulltextDictResolver::resolve(const ParseNode &parse_tree)
+{
+  int ret = OB_SUCCESS;
+  ObRefreshFulltextDictStmt *stmt = nullptr;
+  if (OB_UNLIKELY(T_REFRESH_FULLTEXT_DICT != parse_tree.type_)) {
+    ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("type is not T_REFRESH_FULLTEXT_DICT", K(ret), K(parse_tree.type_));
+  } else if (OB_ISNULL(stmt = create_stmt<ObRefreshFulltextDictStmt>())) {
+    ret = OB_ALLOCATE_MEMORY_FAILED;
+    LOG_ERROR("create ObRefreshFulltextDictStmt failed", K(ret));
+  } else if (FALSE_IT(stmt_ = stmt)) {
+  } else if (OB_UNLIKELY(1 != parse_tree.num_child_
+                         || OB_ISNULL(parse_tree.children_)
+                         || OB_ISNULL(parse_tree.children_[0]))) {
+    ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("invalid refresh fulltext dict parse tree", K(ret), K(parse_tree.num_child_));
+  } else {
+    ObString table_name;
+    ObString database_name;
+    ObSqlString qualified_name;
+    const ParseNode *dict_node = parse_tree.children_[0];
+    const bool is_string_name = T_VARCHAR == dict_node->type_
+        || T_CHAR == dict_node->type_
+        || T_CLOSED_STR == dict_node->type_
+        || T_ESCAPED_STR == dict_node->type_;
+    if (is_string_name) {
+      table_name.assign_ptr(dict_node->str_value_, static_cast<int32_t>(dict_node->str_len_));
+      if (OB_ISNULL(table_name.find('.'))) {
+        database_name = session_info_->get_database_name();
+      }
+    } else if (OB_FAIL(resolve_table_relation_node(dict_node, table_name, database_name))) {
+      LOG_WARN("failed to resolve dictionary table", K(ret));
+    }
+    if (OB_SUCC(ret) && OB_NOT_NULL(table_name.find('.'))) {
+      if (OB_FAIL(qualified_name.append(table_name))) {
+        LOG_WARN("failed to copy quoted dictionary table name", K(ret), K(table_name));
+      }
+    } else if (database_name.empty()) {
+      ret = OB_ERR_NO_DB_SELECTED;
+      LOG_WARN("no database selected for dictionary table", K(ret), K(table_name));
+    } else if (OB_FAIL(qualified_name.append_fmt("%.*s.%.*s",
+                                                 database_name.length(),
+                                                 database_name.ptr(),
+                                                 table_name.length(),
+                                                 table_name.ptr()))) {
+      LOG_WARN("failed to build qualified dictionary table name",
+               K(ret), K(database_name), K(table_name));
+    }
+    if (OB_SUCC(ret) && OB_FAIL(stmt->set_dict_table(qualified_name.string()))) {
+      LOG_WARN("failed to save dictionary table name", K(ret), K(qualified_name));
+    }
+  }
+  return ret;
+}
 int ObWashMemFragmentationResolver::resolve(const ParseNode &parse_tree)
 {
   int ret = OB_SUCCESS;
